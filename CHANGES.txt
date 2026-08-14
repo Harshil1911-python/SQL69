@@ -1,0 +1,29 @@
+SQL69 scan + QR/barcode update
+
+WHAT CHANGED
+============
+1. Admin > Products > QR & barcodes
+   - Product picker: search OR category dropdown → product dropdown
+   - Auto-fills barcode/SKU/ID into payload
+   - Professional barcode rendering
+   - Working QR generation (uses davidshimjs QRCode correctly — no broken QRCode.toCanvas)
+   - Download PNG (barcode / QR / combined label)
+   - Bulk print labels for all products
+   - "All product codes" gallery with barcode + QR for every product
+
+2. Admin > Products
+   - New "Barcodes & QR" button → opens codes panel + full gallery
+
+3. Billing mode
+   - Scan button visible on phone
+   - Camera requests permission properly (rear camera, fallback to any)
+   - Clearer errors if permission denied
+   - processScanCode looks up product in local SQL/IndexedDB by barcode/SKU/id
+
+4. Billing > View bill > Sale
+   - Extra bottom padding + scroll so action buttons are reachable
+
+INSTALL
+=======
+Copy admin-dashboard.html and billing.html into your SQL69 project root
+and into the www/ folder (Capacitor web assets), then rebuild the APK if needed.

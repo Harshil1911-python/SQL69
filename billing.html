@@ -144,7 +144,7 @@ th{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04
 .m-only{display:none}
 .d-only{display:initial}
 .mobile-menu-btn,.mobile-menu,.m-cart-bar,.m-cart-sheet,.m-cart-backdrop,.pos-bottom-nav,.pos-filter-row{display:none}
-#btnScanPrimary{display:none}
+#btnScanPrimary{display:inline-flex}
 #btnShowMoreProducts,#btnShowMorePhotos{display:none}
 
 @media (max-width:768px){
@@ -721,6 +721,16 @@ img,svg{
 }
 a{text-decoration:none;color:inherit}
 /* Scroll containers feel native */
+#cartPanelSale{
+  padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  max-height:100%;
+}
+.cart-side{
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
 .text-list,.cart-side,.photo-grid,.modal,.mobile-menu-panel,#downloadsList{
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
@@ -1183,6 +1193,7 @@ input,select,textarea{
     
   </div>
   <div class="msg" id="invoiceMsg"></div>
+  <div style="height:calc(48px + env(safe-area-inset-bottom, 0px));flex-shrink:0" aria-hidden="true"></div>
 </div><!-- /cartPanelSale -->
 </aside>
 </div>
@@ -2510,16 +2521,22 @@ document.getElementById("scanField").addEventListener("keydown",e=>{
     var msg=document.getElementById("scanModalMsg");
     document.getElementById("scanManualBox").style.display="none";
     box.style.display="block";
-    if(status) status.textContent="Starting camera…";
+    if(status) status.textContent="Requesting camera permission…";
+    if(msg){ msg.textContent=""; msg.className="msg"; }
     stopCamera();
     try{
       if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        throw new Error("Camera not available in this browser");
+        throw new Error("Camera not available. Open the app over HTTPS or in the installed APK, then allow Camera permission.");
       }
-      stream=await navigator.mediaDevices.getUserMedia({
-        audio:false,
-        video:{ facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } }
-      });
+      // Prefer rear camera; fall back to any camera
+      try{
+        stream=await navigator.mediaDevices.getUserMedia({
+          audio:false,
+          video:{ facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } }
+        });
+      }catch(e1){
+        stream=await navigator.mediaDevices.getUserMedia({ audio:false, video:true });
+      }
       var v=document.getElementById("scanVideo");
       v.srcObject=stream;
       await v.play();

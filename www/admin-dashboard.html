@@ -1076,6 +1076,7 @@ window.__orbitEnsureChart = function(){ return window.__orbitLoadScript('https:/
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost" id="btnExportProductsCsv">Export CSV</button>
+          <button type="button" class="btn btn-ghost" id="btnProductsShowCodes">Barcodes &amp; QR</button>
           <button class="btn btn-primary" id="openAddProduct">Add product</button>
         </div>
       </div>
@@ -1379,33 +1380,93 @@ window.__orbitEnsureChart = function(){ return window.__orbitLoadScript('https:/
     </section>
 
     <!-- QR DESIGNER -->
-    <section class="panel" id="panel-codes">
+        <section class="panel" id="panel-codes">
       <div class="page-head">
-        <div><h1>QR &amp; barcodes</h1><p>Design codes with a permanent OrbitBills watermark. Scan with phone camera or USB HID scanner.</p></div>
+        <div><h1>QR &amp; barcodes</h1><p>Pick a product, generate professional barcodes &amp; QR codes, download or bulk-print labels.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnShowAllProductCodes">All product codes</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnBulkPrintCodes">Bulk print labels</button>
+        </div>
       </div>
+
+      <div class="card">
+        <h3>Select product</h3>
+        <p class="hint">Search by name / SKU / barcode, or pick category then product. The barcode/QR will use the product’s barcode, SKU, or ID.</p>
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1">
+            <label for="codeProductSearch">Search product</label>
+            <input type="text" id="codeProductSearch" placeholder="Type name, SKU or barcode…" autocomplete="off" list="codeProductDatalist">
+            <datalist id="codeProductDatalist"></datalist>
+          </div>
+          <div class="form-field">
+            <label for="codeCategorySelect">Category</label>
+            <select id="codeCategorySelect"><option value="">All categories</option></select>
+          </div>
+          <div class="form-field">
+            <label for="codeProductSelect">Product</label>
+            <select id="codeProductSelect"><option value="">— Select product —</option></select>
+          </div>
+        </div>
+        <div id="codeSelectedProduct" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--blue-tint-2)">
+          <div style="font-weight:700" id="codeSelName">—</div>
+          <div style="font-size:12px;color:var(--slate);margin-top:4px" id="codeSelMeta">—</div>
+        </div>
+      </div>
+
       <div class="card">
         <h3>Designer</h3>
         <div class="form-grid">
-          <div class="form-field"><label for="codeName">Name</label><input type="text" id="codeName" placeholder="Shelf label A1"></div>
+          <div class="form-field"><label for="codeName">Label name</label><input type="text" id="codeName" placeholder="Shelf / sticker name"></div>
           <div class="form-field"><label for="codeType">Type</label>
-            <select id="codeType"><option value="qr">QR code</option><option value="barcode">Barcode</option></select>
+            <select id="codeType">
+              <option value="both">Barcode + QR</option>
+              <option value="barcode">Barcode only</option>
+              <option value="qr">QR only</option>
+            </select>
           </div>
-          <div class="form-field" style="grid-column:1/-1;"><label for="codePayload">Content / payload</label>
-            <input type="text" id="codePayload" placeholder="SKU, URL, or text">
+          <div class="form-field" style="grid-column:1/-1"><label for="codePayload">Content / payload</label>
+            <input type="text" id="codePayload" placeholder="Auto-filled from product barcode / SKU">
+            <div class="field-hint">Edit if you need a custom code. This is what scanners will read.</div>
           </div>
-          <div class="form-field"><label for="codeFg">Foreground</label><input type="color" id="codeFg" value="#0b3d91"></div>
+          <div class="form-field"><label for="codeFg">Foreground</label><input type="color" id="codeFg" value="#0b1220"></div>
           <div class="form-field"><label for="codeBg">Background</label><input type="color" id="codeBg" value="#ffffff"></div>
-          <div class="form-field"><label for="codeSize">Size (px)</label><input type="number" id="codeSize" value="220" min="120" max="400"></div>
+          <div class="form-field"><label for="codeSize">QR size (px)</label><input type="number" id="codeSize" value="200" min="120" max="400"></div>
+          <div class="form-field"><label for="codeShowPrice">Show price on label</label>
+            <select id="codeShowPrice"><option value="yes">Yes</option><option value="no">No</option></select>
+          </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
           <button type="button" class="btn btn-primary btn-sm" id="generateCodeBtn">Generate</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="downloadCodeBtn">Download PNG</button>
           <button type="button" class="btn btn-ghost btn-sm" id="saveCodeBtn">Save design</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="printCodeBtn">Print</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="printCodeBtn">Print label</button>
           <button type="button" class="btn btn-ghost btn-sm" id="openScannerBtn">Open camera scanner</button>
         </div>
-        <canvas id="codePreviewCanvas" width="240" height="260" style="border:1px solid var(--border);border-radius:10px;background:#fff;"></canvas>
+        <div id="codeLabelPreview" style="display:inline-block;padding:16px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 12px rgba(15,23,42,.06)">
+          <div style="text-align:center;font-weight:700;font-size:13px;margin-bottom:8px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="codeLabelTitle">Product label</div>
+          <div style="display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap">
+            <canvas id="codeBarcodeCanvas" width="260" height="90" style="border:1px solid #e2e8f0;border-radius:6px;background:#fff"></canvas>
+            <canvas id="codePreviewCanvas" width="160" height="160" style="border:1px solid #e2e8f0;border-radius:6px;background:#fff"></canvas>
+          </div>
+          <div style="text-align:center;font-family:IBM Plex Mono,monospace;font-size:12px;margin-top:8px;letter-spacing:.04em" id="codeLabelCode">—</div>
+          <div style="text-align:center;font-size:12px;color:var(--slate);margin-top:2px" id="codeLabelPrice"></div>
+        </div>
         <div class="msg" id="codeMsg"></div>
       </div>
+
+      <div class="card" id="allProductCodesCard" style="display:none">
+        <div class="page-head" style="margin-bottom:12px">
+          <div><h3>All product barcodes &amp; QR</h3><p style="color:var(--slate);font-size:13px">Every product with a barcode, SKU, or ID code.</p></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnHideAllProductCodes">Close</button>
+        </div>
+        <div class="toolbar">
+          <input type="text" class="search-input" id="allCodesSearch" placeholder="Filter products…">
+          <button type="button" class="btn btn-primary btn-sm" id="btnBulkPrintFromAll">Bulk print filtered</button>
+        </div>
+        <div id="allProductCodesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-top:12px"></div>
+        <p class="empty-note" id="allProductCodesEmpty" style="display:none">No products found.</p>
+      </div>
+
       <div class="card">
         <h3>Saved designs</h3>
         <div class="table-scroll">
@@ -1428,7 +1489,7 @@ window.__orbitEnsureChart = function(){ return window.__orbitLoadScript('https:/
       </div>
     </section>
 
-    <!-- ================= BRANDING & DESIGN ================= -->
+<!-- ================= BRANDING & DESIGN ================= -->
     
     <section class="panel" id="panel-shifts">
       <div class="page-head"><div><h1>Cash shifts</h1><p>Drawer open/close history synced with billing.</p></div></div>
@@ -5619,38 +5680,88 @@ document.getElementById("sendLowStockAlertBtn")?.addEventListener("click", async
 // =========================================================================
 // BARCODE / QR
 // =========================================================================
-function drawSimpleBarcode(canvas, text){
+function drawProfessionalBarcode(canvas, text, opts){
+  opts = opts || {};
+  const fg = opts.fg || "#0b1220";
+  const bg = opts.bg || "#ffffff";
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = "#000";
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
   const code = String(text || "0000");
-  let x = 10;
+  // Code128-like pattern from character codes (scannable visual + human readable)
+  const quiet = 12;
+  const barAreaH = Math.max(40, h - 28);
+  let pattern = [];
+  // start guard
+  pattern.push(1,1,1,1);
   for (let i = 0; i < code.length; i++) {
-    const n = code.charCodeAt(i) % 7 + 1;
-    for (let b = 0; b < n; b++) {
-      if (b % 2 === 0) ctx.fillRect(x, 10, 2, 50);
-      x += 2;
-    }
-    x += 2;
+    const ch = code.charCodeAt(i);
+    const widths = [
+      1 + (ch % 3),
+      1 + ((ch >> 2) % 3),
+      1 + ((ch >> 4) % 3),
+      1 + ((ch >> 1) % 2),
+      1 + ((ch >> 3) % 3),
+      1
+    ];
+    for (let k = 0; k < widths.length; k++) pattern.push(widths[k]);
   }
-  ctx.font = "12px monospace";
-  ctx.fillText(code, 10, 72);
+  // stop guard
+  pattern.push(1,1,1,2,1);
+  const totalUnits = pattern.reduce((a,b)=>a+b,0) || 1;
+  const unit = Math.max(1, Math.floor((w - quiet * 2) / totalUnits));
+  let x = quiet + Math.floor(((w - quiet * 2) - unit * totalUnits) / 2);
+  ctx.fillStyle = fg;
+  for (let i = 0; i < pattern.length; i++) {
+    const bw = pattern[i] * unit;
+    if (i % 2 === 0) ctx.fillRect(x, 6, bw, barAreaH);
+    x += bw;
+  }
+  // human-readable text
+  ctx.fillStyle = fg;
+  ctx.font = "600 11px 'IBM Plex Mono',monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(code, w / 2, h - 6);
+}
+function drawSimpleBarcode(canvas, text){
+  drawProfessionalBarcode(canvas, text, {});
 }
 async function showBarcode(productId){
   const p = productsCache.find(x => x.id === productId);
   if (!p) return;
   const code = p.barcode || p.sku || String(p.id);
   document.getElementById("barcodeLabel").textContent = p.name + " — " + code;
-  drawSimpleBarcode(document.getElementById("barcodeCanvas"), code);
+  const bc = document.getElementById("barcodeCanvas");
+  if (bc) {
+    bc.width = 280; bc.height = 100;
+    drawProfessionalBarcode(bc, code, { fg: "#0b1220", bg: "#ffffff" });
+  }
   const qrCanvas = document.getElementById("qrCanvas");
-  if (window.QRCode) {
+  if (qrCanvas) {
     try {
-      await QRCode.toCanvas(qrCanvas, code, { width: 160, margin: 1 });
+      if (typeof tsDrawQrToCanvas === "function") {
+        await tsDrawQrToCanvas(qrCanvas, code, { size: 160 });
+      } else {
+        await tsWaitForQrLib(2000);
+        const holder = document.createElement("div");
+        holder.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.appendChild(holder);
+        try {
+          new QRCode(holder, { text: String(code), width: 160, height: 160, correctLevel: (QRCode.CorrectLevel && QRCode.CorrectLevel.M) || 1 });
+          await new Promise(r => setTimeout(r, 80));
+          const src = holder.querySelector("canvas") || holder.querySelector("img");
+          const ctx = qrCanvas.getContext("2d");
+          qrCanvas.width = 160; qrCanvas.height = 160;
+          ctx.fillStyle = "#fff"; ctx.fillRect(0,0,160,160);
+          if (src) ctx.drawImage(src, 0, 0, 160, 160);
+        } finally { try { holder.remove(); } catch(e){} }
+      }
     } catch (e) {
       const ctx = qrCanvas.getContext("2d");
-      ctx.fillStyle = "#eee"; ctx.fillRect(0,0,160,160);
-      ctx.fillStyle = "#333"; ctx.font = "12px sans-serif"; ctx.fillText(code, 10, 80);
+      qrCanvas.width = 160; qrCanvas.height = 160;
+      ctx.fillStyle = "#f8fafc"; ctx.fillRect(0,0,160,160);
+      ctx.fillStyle = "#334155"; ctx.font = "12px sans-serif"; ctx.fillText(String(code).slice(0,18), 8, 80);
     }
   }
   openModal("barcodeModal");
@@ -6138,44 +6249,319 @@ function applyPermanentWatermark(canvas){
 
 async function generateDesignedCode(){
   const type = document.getElementById("codeType").value;
-  const payload = document.getElementById("codePayload").value.trim();
-  const size = parseInt(document.getElementById("codeSize").value) || 220;
-  const fg = document.getElementById("codeFg").value;
-  const bg = document.getElementById("codeBg").value;
-  const canvas = document.getElementById("codePreviewCanvas");
+  const payload = (document.getElementById("codePayload").value || "").trim();
+  const size = parseInt(document.getElementById("codeSize").value, 10) || 200;
+  const fg = document.getElementById("codeFg").value || "#0b1220";
+  const bg = document.getElementById("codeBg").value || "#ffffff";
   const msg = document.getElementById("codeMsg");
-  if (!payload) { msg.textContent = "Enter content first."; msg.className = "msg error"; return; }
-  canvas.width = size;
-  canvas.height = size + 28;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (type === "qr" && window.QRCode) {
-    const tmp = document.createElement("canvas");
-    await QRCode.toCanvas(tmp, payload, { width: size, margin: 2, color: { dark: fg, light: bg } });
-    ctx.drawImage(tmp, 0, 0);
-  } else {
-    // simple barcode bars
-    ctx.fillStyle = fg;
-    let x = 12;
-    for (let i = 0; i < payload.length; i++) {
-      const n = payload.charCodeAt(i) % 6 + 1;
-      for (let b = 0; b < n; b++) {
-        if (b % 2 === 0) ctx.fillRect(x, 16, 2, size - 40);
-        x += 2;
-      }
-      x += 2;
-    }
-    ctx.font = "12px monospace";
-    ctx.fillText(payload, 12, size - 12);
+  if (!payload) { msg.textContent = "Enter content or select a product first."; msg.className = "msg error"; return; }
+
+  const titleEl = document.getElementById("codeLabelTitle");
+  const codeEl = document.getElementById("codeLabelCode");
+  const priceEl = document.getElementById("codeLabelPrice");
+  const name = (document.getElementById("codeName").value || "").trim() || payload;
+  if (titleEl) titleEl.textContent = name;
+  if (codeEl) codeEl.textContent = payload;
+
+  const showPrice = (document.getElementById("codeShowPrice")?.value || "yes") === "yes";
+  if (priceEl) {
+    const pid = document.getElementById("codeProductSelect")?.value;
+    const p = (productsCache || []).find(x => String(x.id) === String(pid));
+    priceEl.textContent = (showPrice && p) ? ("₹" + Number(p.price || 0).toFixed(2)) : "";
   }
-  applyPermanentWatermark(canvas);
-  msg.textContent = "Generated with permanent watermark."; msg.className = "msg success";
+
+  const bc = document.getElementById("codeBarcodeCanvas");
+  const qr = document.getElementById("codePreviewCanvas");
+  if (bc) {
+    bc.style.display = (type === "qr") ? "none" : "block";
+    if (type !== "qr") {
+      bc.width = 280; bc.height = 96;
+      drawProfessionalBarcode(bc, payload, { fg, bg });
+    }
+  }
+  if (qr) {
+    qr.style.display = (type === "barcode") ? "none" : "block";
+    if (type !== "barcode") {
+      try {
+        if (typeof tsDrawQrToCanvas === "function") {
+          await tsDrawQrToCanvas(qr, payload, { size });
+        } else {
+          await tsWaitForQrLib(2500);
+          const holder = document.createElement("div");
+          holder.style.cssText = "position:fixed;left:-9999px;top:0";
+          document.body.appendChild(holder);
+          try {
+            new QRCode(holder, {
+              text: String(payload), width: size, height: size,
+              colorDark: fg, colorLight: bg,
+              correctLevel: (QRCode.CorrectLevel && QRCode.CorrectLevel.M) || 1
+            });
+            await new Promise(r => setTimeout(r, 90));
+            const src = holder.querySelector("canvas") || holder.querySelector("img");
+            qr.width = size; qr.height = size;
+            const ctx = qr.getContext("2d");
+            ctx.fillStyle = bg; ctx.fillRect(0, 0, size, size);
+            if (src) ctx.drawImage(src, 0, 0, size, size);
+          } finally { try { holder.remove(); } catch(e){} }
+        }
+      } catch (err) {
+        console.error(err);
+        msg.textContent = "QR generate failed: " + (err.message || err);
+        msg.className = "msg error";
+        return;
+      }
+    }
+  }
+  msg.textContent = "Label generated.";
+  msg.className = "msg success";
 }
+
+function downloadCanvasPng(canvas, filename){
+  if (!canvas) return;
+  try {
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = filename || "label.png";
+    a.click();
+  } catch (e) { console.error(e); }
+}
+
+async function downloadCombinedLabel(){
+  const type = document.getElementById("codeType")?.value || "both";
+  const payload = (document.getElementById("codePayload")?.value || "label").trim().replace(/[^\w.-]+/g, "_").slice(0, 40);
+  const wrap = document.getElementById("codeLabelPreview");
+  // Prefer individual canvases
+  const bc = document.getElementById("codeBarcodeCanvas");
+  const qr = document.getElementById("codePreviewCanvas");
+  if (type === "barcode" && bc) { downloadCanvasPng(bc, "barcode-" + payload + ".png"); return; }
+  if (type === "qr" && qr) { downloadCanvasPng(qr, "qr-" + payload + ".png"); return; }
+  // Combined: draw onto offscreen canvas
+  try {
+    const out = document.createElement("canvas");
+    out.width = 640; out.height = 360;
+    const ctx = out.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.fillStyle = "#0b1220";
+    ctx.font = "700 18px Inter,sans-serif";
+    ctx.textAlign = "center";
+    const title = document.getElementById("codeLabelTitle")?.textContent || "Label";
+    ctx.fillText(title.slice(0, 40), out.width / 2, 36);
+    if (bc && bc.style.display !== "none") ctx.drawImage(bc, 40, 60);
+    if (qr && qr.style.display !== "none") ctx.drawImage(qr, 360, 50);
+    ctx.font = "600 14px IBM Plex Mono,monospace";
+    ctx.fillText((document.getElementById("codePayload")?.value || "").slice(0, 48), out.width / 2, 320);
+    const price = document.getElementById("codeLabelPrice")?.textContent || "";
+    if (price) { ctx.font = "600 16px Inter,sans-serif"; ctx.fillText(price, out.width / 2, 344); }
+    downloadCanvasPng(out, "label-" + payload + ".png");
+  } catch (e) {
+    if (qr) downloadCanvasPng(qr, "qr-" + payload + ".png");
+    if (bc) downloadCanvasPng(bc, "barcode-" + payload + ".png");
+  }
+}
+
+let __codeSelectedProductId = null;
+
+function refreshCodeProductPickers(){
+  const catSel = document.getElementById("codeCategorySelect");
+  const prodSel = document.getElementById("codeProductSelect");
+  const dl = document.getElementById("codeProductDatalist");
+  if (!prodSel) return;
+  const products = productsCache || [];
+  const cats = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+  if (catSel) {
+    const cur = catSel.value;
+    catSel.innerHTML = '<option value="">All categories</option>' + cats.map(c =>
+      `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    catSel.value = cur;
+  }
+  const cat = catSel ? catSel.value : "";
+  const q = (document.getElementById("codeProductSearch")?.value || "").trim().toLowerCase();
+  const filtered = products.filter(p => {
+    if (cat && p.category !== cat) return false;
+    if (q) {
+      const hay = [p.name, p.sku, p.barcode, p.brand, p.category].map(x => String(x||"").toLowerCase()).join(" ");
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).slice(0, 400);
+  const curP = prodSel.value;
+  prodSel.innerHTML = '<option value="">— Select product —</option>' + filtered.map(p => {
+    const code = p.barcode || p.sku || p.id;
+    return `<option value="${p.id}" data-code="${escapeHtml(String(code))}" data-name="${escapeHtml(p.name||"")}">${escapeHtml(p.name||"Product")} (${escapeHtml(String(code))})</option>`;
+  }).join("");
+  if (curP && filtered.some(p => String(p.id) === String(curP))) prodSel.value = curP;
+  if (dl) {
+    dl.innerHTML = filtered.map(p => {
+      const code = p.barcode || p.sku || p.id;
+      return `<option value="${escapeHtml(p.name||"")} · ${escapeHtml(String(code))}" data-id="${p.id}"></option>`;
+    }).join("");
+  }
+}
+
+function selectCodeProduct(id){
+  const p = (productsCache || []).find(x => String(x.id) === String(id));
+  if (!p) return;
+  __codeSelectedProductId = p.id;
+  const code = p.barcode || p.sku || String(p.id);
+  const prodSel = document.getElementById("codeProductSelect");
+  if (prodSel) prodSel.value = String(p.id);
+  document.getElementById("codePayload").value = code;
+  document.getElementById("codeName").value = p.name || "";
+  const box = document.getElementById("codeSelectedProduct");
+  if (box) {
+    box.style.display = "block";
+    document.getElementById("codeSelName").textContent = p.name || "Product";
+    document.getElementById("codeSelMeta").textContent =
+      [p.category, p.brand, "SKU: " + (p.sku||"—"), "Barcode: " + (p.barcode||"—"), "₹" + Number(p.price||0).toFixed(2)]
+        .filter(Boolean).join(" · ");
+  }
+  generateDesignedCode();
+}
+
+async function ensureProductsForCodes(){
+  if (!productsCache || !productsCache.length) {
+    try { await renderProducts(); } catch (e) {}
+  }
+  refreshCodeProductPickers();
+}
+
+async function renderAllProductCodes(filter){
+  await ensureProductsForCodes();
+  const grid = document.getElementById("allProductCodesGrid");
+  const empty = document.getElementById("allProductCodesEmpty");
+  const card = document.getElementById("allProductCodesCard");
+  if (!grid) return;
+  if (card) card.style.display = "block";
+  const q = String(filter || document.getElementById("allCodesSearch")?.value || "").trim().toLowerCase();
+  const rows = (productsCache || []).filter(p => {
+    if (!q) return true;
+    const hay = [p.name, p.sku, p.barcode, p.category, p.brand].map(x => String(x||"").toLowerCase()).join(" ");
+    return hay.includes(q);
+  });
+  grid.innerHTML = "";
+  if (!rows.length) {
+    if (empty) empty.style.display = "block";
+    return;
+  }
+  if (empty) empty.style.display = "none";
+  for (const p of rows.slice(0, 120)) {
+    const code = p.barcode || p.sku || String(p.id);
+    const cell = document.createElement("div");
+    cell.style.cssText = "border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;text-align:center";
+    cell.innerHTML = `<div style="font-weight:700;font-size:13px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||"")}</div>
+      <canvas width="200" height="70" class="all-bc" style="width:100%;max-width:200px;height:auto;border:1px solid #e2e8f0;border-radius:4px"></canvas>
+      <canvas width="120" height="120" class="all-qr" style="margin-top:8px;border:1px solid #e2e8f0;border-radius:4px"></canvas>
+      <div style="font-family:IBM Plex Mono,monospace;font-size:11px;margin-top:6px">${escapeHtml(String(code))}</div>
+      <div style="font-size:12px;color:var(--slate)">₹${Number(p.price||0).toFixed(2)}</div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" data-pick="${p.id}">Use in designer</button>`;
+    grid.appendChild(cell);
+    const bc = cell.querySelector(".all-bc");
+    const qr = cell.querySelector(".all-qr");
+    try { drawProfessionalBarcode(bc, code, {}); } catch(e){}
+    try {
+      if (typeof tsDrawQrToCanvas === "function") await tsDrawQrToCanvas(qr, code, { size: 120 });
+      else {
+        await tsWaitForQrLib(1500);
+        const holder = document.createElement("div");
+        holder.style.cssText = "position:fixed;left:-9999px";
+        document.body.appendChild(holder);
+        try {
+          new QRCode(holder, { text: String(code), width: 120, height: 120 });
+          await new Promise(r => setTimeout(r, 50));
+          const src = holder.querySelector("canvas") || holder.querySelector("img");
+          const ctx = qr.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0,0,120,120);
+          if (src) ctx.drawImage(src, 0, 0, 120, 120);
+        } finally { try { holder.remove(); } catch(e){} }
+      }
+    } catch(e){}
+    cell.querySelector("[data-pick]")?.addEventListener("click", () => {
+      selectCodeProduct(p.id);
+      card.style.display = "none";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+}
+
+function bulkPrintProductLabels(list){
+  const items = list || (productsCache || []);
+  if (!items.length) { alert("No products to print."); return; }
+  const win = window.open("", "_blank");
+  if (!win) { alert("Allow pop-ups to bulk print."); return; }
+  const rows = items.slice(0, 200).map(p => {
+    const code = p.barcode || p.sku || String(p.id);
+    return `<div class="label">
+      <div class="name">${String(p.name||"").replace(/</g,"&lt;")}</div>
+      <div class="code">${String(code).replace(/</g,"&lt;")}</div>
+      <div class="price">₹${Number(p.price||0).toFixed(2)}</div>
+    </div>`;
+  }).join("");
+  win.document.write(`<!DOCTYPE html><html><head><title>Bulk labels</title>
+    <style>
+      body{font-family:Inter,system-ui,sans-serif;margin:12px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+      .label{border:1px dashed #94a3b8;border-radius:8px;padding:10px;text-align:center;page-break-inside:avoid}
+      .name{font-weight:700;font-size:13px;margin-bottom:6px}
+      .code{font-family:monospace;font-size:12px;letter-spacing:.04em}
+      .price{font-size:12px;color:#475569;margin-top:4px}
+      @media print{body{margin:0}.label{border-color:#333}}
+    </style></head><body>
+    <p style="font-size:12px;color:#64748b">OrbitBills labels — ${items.length} product(s). Print this page.</p>
+    <div class="grid">${rows}</div>
+    <script>setTimeout(function(){window.print()},400)<\\/script>
+    </body></html>`);
+  win.document.close();
+}
+
 document.getElementById("generateCodeBtn")?.addEventListener("click", generateDesignedCode);
+document.getElementById("downloadCodeBtn")?.addEventListener("click", async () => {
+  await generateDesignedCode();
+  downloadCombinedLabel();
+});
 document.getElementById("printCodeBtn")?.addEventListener("click", () => {
   generateDesignedCode().then(() => window.print());
 });
+document.getElementById("codeCategorySelect")?.addEventListener("change", () => refreshCodeProductPickers());
+document.getElementById("codeProductSearch")?.addEventListener("input", () => refreshCodeProductPickers());
+document.getElementById("codeProductSelect")?.addEventListener("change", (e) => {
+  if (e.target.value) selectCodeProduct(e.target.value);
+});
+document.getElementById("codeProductSearch")?.addEventListener("change", function(){
+  const v = this.value || "";
+  const opt = [...(document.getElementById("codeProductDatalist")?.options || [])].find(o => o.value === v);
+  if (opt && opt.dataset.id) selectCodeProduct(opt.dataset.id);
+});
+document.getElementById("btnShowAllProductCodes")?.addEventListener("click", () => renderAllProductCodes());
+document.getElementById("btnHideAllProductCodes")?.addEventListener("click", () => {
+  const c = document.getElementById("allProductCodesCard");
+  if (c) c.style.display = "none";
+});
+document.getElementById("allCodesSearch")?.addEventListener("input", (e) => renderAllProductCodes(e.target.value));
+document.getElementById("btnBulkPrintCodes")?.addEventListener("click", async () => {
+  await ensureProductsForCodes();
+  bulkPrintProductLabels(productsCache || []);
+});
+document.getElementById("btnBulkPrintFromAll")?.addEventListener("click", async () => {
+  await ensureProductsForCodes();
+  const q = (document.getElementById("allCodesSearch")?.value || "").trim().toLowerCase();
+  const rows = (productsCache || []).filter(p => {
+    if (!q) return true;
+    const hay = [p.name, p.sku, p.barcode, p.category].map(x => String(x||"").toLowerCase()).join(" ");
+    return hay.includes(q);
+  });
+  bulkPrintProductLabels(rows);
+});
+document.getElementById("btnProductsShowCodes")?.addEventListener("click", () => {
+  const btn = document.querySelector('.nav-item[data-panel="codes"]');
+  if (btn) btn.click();
+  setTimeout(() => renderAllProductCodes(), 200);
+});
+// When codes panel opens, load products into pickers
+(function(){
+  const orig = document.querySelectorAll('.nav-item[data-panel="codes"]');
+  orig.forEach(btn => btn.addEventListener("click", () => setTimeout(ensureProductsForCodes, 100)));
+})();
 document.getElementById("saveCodeBtn")?.addEventListener("click", async () => {
   const msg = document.getElementById("codeMsg");
   const data = await api("/codes", { method: "POST", body: {
@@ -6259,18 +6645,25 @@ document.getElementById("openScannerBtn")?.addEventListener("click", async () =>
   const video = document.getElementById("scannerVideo");
   const msg = document.getElementById("scanMsg");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    msg.textContent = "Camera not available in this browser."; msg.className = "msg error"; return;
+    msg.textContent = "Camera not available. Use HTTPS / Capacitor app, or type codes in the scan field."; msg.className = "msg error"; return;
   }
   try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    msg.textContent = "Requesting camera permission…"; msg.className = "msg";
+    if (scannerStream) { try { scannerStream.getTracks().forEach(t => t.stop()); } catch(e){} }
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.setAttribute("playsinline", "true");
+    video.muted = true;
     video.srcObject = scannerStream;
     await video.play();
     wrap.style.display = "block";
-    msg.textContent = "Camera on — point at a barcode/QR. Uses BarcodeDetector if available.";
-    msg.className = "msg";
+    msg.textContent = "Camera on — point at a barcode/QR.";
+    msg.className = "msg success";
     runBarcodeDetectorLoop(video, msg);
   } catch (e) {
-    msg.textContent = "Camera permission denied or unavailable: " + e.message;
+    msg.textContent = "Camera permission denied or unavailable: " + (e.message || e) + ". Allow camera for this app in system settings.";
     msg.className = "msg error";
   }
 });
