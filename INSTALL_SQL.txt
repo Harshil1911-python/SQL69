@@ -1,0 +1,30 @@
+OrbitBills — Local SQLite package
+=================================
+
+1) Copy into your ORBITBILLSCAPACITOR project root:
+   - Db.js          → replace root Db.js
+   - www/Db.js      → replace www/Db.js
+   - package.json   → merge dependencies (or replace if you use this full file)
+   - capacitor.config.ts / app-config.json (optional, unchanged behaviour)
+
+2) Install & sync:
+   npm install
+   npx cap sync android
+
+3) Build APK:
+   cd android && ./gradlew assembleDebug
+   OR push to GitHub → Actions → Build APK
+
+4) First launch:
+   - SQLite DB is created automatically
+   - If old IndexedDB data exists, it is migrated once into SQLite
+   - Login with same preset accounts
+
+Browser testing:
+   - Uses sql.js (loaded from CDN on first open — needs network once)
+   - Data persisted in localStorage key ts_sqlite_wasm_b64
+
+Preset logins (unchanged):
+   admin@techserenia.com / TechSerenia@2026
+   billing@techserenia.com / TechSerenia@2026
+   accountant@techserenia.com / TechSerenia@2026

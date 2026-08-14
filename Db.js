@@ -1,10 +1,12 @@
 /*
-  Db.js — OrbitBills local database (IndexedDB only)
-  ALL business data and auth live on the device. No SQLite.
-  Fixed accounts: admin@ / billing@ / accountant@ techserenia.com  password TechSerenia@2026
+  Db.js — OrbitBills local database (SQLite primary)
+  Capacitor native: @capacitor-community/sqlite
+  Browser: sql.js (WASM) persisted to localStorage
+  Public API unchanged: tsLocalApi, tsLogin, tsWhoami, tsGet, tsPut, …
+  One-time migration from IndexedDB when SQLite is empty.
 */
 const TS_DB_NAME = "techserenia_pos";
-const TS_DB_VERSION = 7;
+const TS_DB_VERSION = 8;
 const TS_MASTER_EMAIL = "orbitbills@techserenia.com";
 const TS_MASTER_PASSWORD = "TechSerenia@2026";
 const TS_DEFAULT_USERS = [
@@ -29,38 +31,203 @@ const TS_ALL_STORES = [
   "cash_ledger","drawings","upi_accounts",
 ];
 
-function tsOpenDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(TS_DB_NAME, TS_DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      const ensure = (name, keyPath, autoInc) => {
-        if (!db.objectStoreNames.contains(name))
-          db.createObjectStore(name, { keyPath: keyPath || "id", autoIncrement: !!autoInc });
-      };
-      ensure("products", "id", true);
-      ensure("clients", "id", true);
-      ensure("invoices", "id", true);
-      ensure("settings", "key", false);
-      if (!db.objectStoreNames.contains("users")) {
-        const s = db.createObjectStore("users", { keyPath: "email" });
-        s.createIndex("role", "role", { unique: false });
-      }
-      TS_ALL_STORES.forEach(n => {
-        if (n === "settings" || n === "users") return;
-        ensure(n, "id", true);
-      });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+/* ========== SQLite backend ========== */
+let _tsSql = null;          // { type:'native'|'wasm', db, sqlitePlugin? }
+let _tsSqlReady = null;
+let _tsSeq = Object.create(null); // autoincrement counters per store
+
+function _tsIsNativeCap() {
+  try {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  } catch (e) { return false; }
 }
 
-/** Safe read — missing object store returns [] instead of throwing */
+function _tsTableSQL(name) {
+  return "CREATE TABLE IF NOT EXISTS `" + name + "` (id TEXT PRIMARY KEY NOT NULL, json TEXT NOT NULL)";
+}
+
+async function _tsInitWasm() {
+  // sql.js from CDN if not bundled
+  if (typeof window.initSqlJs === "undefined") {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://sql.js.org/dist/sql-wasm.js";
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("sql.js load failed"));
+      document.head.appendChild(s);
+    });
+  }
+  const SQL = await window.initSqlJs({
+    locateFile: f => "https://sql.js.org/dist/" + f,
+  });
+  let db;
+  try {
+    const raw = localStorage.getItem("ts_sqlite_wasm_b64");
+    if (raw) {
+      const bin = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+      db = new SQL.Database(bin);
+    } else {
+      db = new SQL.Database();
+    }
+  } catch (e) {
+    db = new SQL.Database();
+  }
+  for (const n of TS_ALL_STORES) db.run(_tsTableSQL(n));
+  db.run("CREATE TABLE IF NOT EXISTS `_meta_seq` (store TEXT PRIMARY KEY, n INTEGER NOT NULL)");
+  return { type: "wasm", db };
+}
+
+async function _tsInitNative() {
+  // Prefer Capacitor registered plugin (no bundler required for plain HTML www/)
+  const plugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite)
+    ? window.Capacitor.Plugins.CapacitorSQLite
+    : null;
+  if (!plugin) throw new Error("Capacitor SQLite plugin not available");
+  try {
+    await plugin.checkConnectionsConsistency({ dbNames: [TS_DB_NAME], openModes: ["RW"] });
+  } catch (e) {}
+  let db;
+  try {
+    const isConn = await plugin.isConnection({ database: TS_DB_NAME, readonly: false });
+    if (isConn && isConn.result) {
+      db = await plugin.retrieveConnection({ database: TS_DB_NAME, readonly: false });
+    } else {
+      await plugin.createConnection({
+        database: TS_DB_NAME,
+        version: TS_DB_VERSION,
+        encrypted: false,
+        mode: "no-encryption",
+        readonly: false,
+      });
+      db = await plugin.retrieveConnection({ database: TS_DB_NAME, readonly: false });
+    }
+  } catch (e) {
+    await plugin.createConnection({
+      database: TS_DB_NAME,
+      version: TS_DB_VERSION,
+      encrypted: false,
+      mode: "no-encryption",
+      readonly: false,
+    });
+    db = await plugin.retrieveConnection({ database: TS_DB_NAME, readonly: false });
+  }
+  await db.open();
+  for (const n of TS_ALL_STORES) {
+    await db.execute({ statements: _tsTableSQL(n) });
+  }
+  await db.execute({ statements: "CREATE TABLE IF NOT EXISTS `_meta_seq` (store TEXT PRIMARY KEY, n INTEGER NOT NULL)" });
+  return { type: "native", db, plugin };
+}
+
+function _tsPersistWasm() {
+  if (!_tsSql || _tsSql.type !== "wasm") return;
+  try {
+    const data = _tsSql.db.export();
+    let s = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < data.length; i += chunk) {
+      s += String.fromCharCode.apply(null, data.subarray(i, i + chunk));
+    }
+    localStorage.setItem("ts_sqlite_wasm_b64", btoa(s));
+  } catch (e) {
+    console.warn("ts sqlite wasm persist", e);
+  }
+}
+
+async function tsOpenDB() {
+  if (_tsSql) return _tsSql;
+  if (_tsSqlReady) return _tsSqlReady;
+  _tsSqlReady = (async () => {
+    try {
+      if (_tsIsNativeCap()) {
+        _tsSql = await _tsInitNative();
+      } else {
+        _tsSql = await _tsInitWasm();
+      }
+    } catch (e) {
+      console.warn("Native SQLite failed, using wasm", e);
+      _tsSql = await _tsInitWasm();
+    }
+    await _tsLoadSeqs();
+    await _tsMaybeMigrateFromIndexedDB();
+    return _tsSql;
+  })();
+  return _tsSqlReady;
+}
+
+async function _tsLoadSeqs() {
+  const rows = await _tsQuery("SELECT store, n FROM `_meta_seq`");
+  for (const r of rows) _tsSeq[r.store] = Number(r.n) || 0;
+}
+
+async function _tsNextId(store) {
+  await tsOpenDB();
+  let n = (_tsSeq[store] || 0) + 1;
+  // also scan max numeric id
+  const all = await tsGetAll(store);
+  for (const row of all) {
+    const id = Number(row && row.id);
+    if (!Number.isNaN(id) && id >= n) n = id + 1;
+  }
+  _tsSeq[store] = n;
+  await _tsRun("INSERT OR REPLACE INTO `_meta_seq` (store, n) VALUES (?,?)", [store, n]);
+  return n;
+}
+
+async function _tsRun(sql, params) {
+  await tsOpenDB();
+  params = params || [];
+  if (_tsSql.type === "wasm") {
+    _tsSql.db.run(sql, params);
+    _tsPersistWasm();
+    return;
+  }
+  // capacitor-community/sqlite: run with values array
+  await _tsSql.db.run(sql, params);
+}
+
+async function _tsQuery(sql, params) {
+  await tsOpenDB();
+  params = params || [];
+  if (_tsSql.type === "wasm") {
+    const stmt = _tsSql.db.prepare(sql);
+    if (params && params.length) stmt.bind(params);
+    const out = [];
+    while (stmt.step()) out.push(stmt.getAsObject());
+    stmt.free();
+    return out;
+  }
+  // native: query returns { values: [ {col: val}, ... ] }
+  const res = await _tsSql.db.query(sql, params);
+  if (res && Array.isArray(res.values)) return res.values;
+  if (Array.isArray(res)) return res;
+  return [];
+}
+
+function _tsKey(store, key) {
+  if (store === "users") return String(key || "").trim().toLowerCase();
+  if (store === "settings") return String(key);
+  return String(key);
+}
+
+function _tsRowId(store, value) {
+  if (store === "users") return String(value.email || "").trim().toLowerCase();
+  if (store === "settings") return String(value.key);
+  if (value && value.id != null) return String(value.id);
+  return null;
+}
+
+async function tsGetAll(storeName) {
+  await tsOpenDB();
+  const rows = await _tsQuery("SELECT json FROM `" + storeName + "`");
+  return rows.map(r => {
+    try { return JSON.parse(r.json); } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
 async function tsGetAllSafe(storeName) {
   try {
-    const db = await tsOpenDB();
-    if (!db.objectStoreNames.contains(storeName)) return [];
+    await tsOpenDB();
     return await tsGetAll(storeName);
   } catch (e) {
     console.warn("tsGetAllSafe", storeName, e);
@@ -68,62 +235,121 @@ async function tsGetAllSafe(storeName) {
   }
 }
 
-async function tsGetAll(storeName) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
 async function tsGet(storeName, key) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readonly").objectStore(storeName).get(key);
-    req.onsuccess = () => resolve(req.result || null);
-    req.onerror = () => reject(req.error);
-  });
+  await tsOpenDB();
+  const id = _tsKey(storeName, key);
+  const rows = await _tsQuery("SELECT json FROM `" + storeName + "` WHERE id = ?", [id]);
+  if (!rows.length) return null;
+  try { return JSON.parse(rows[0].json); } catch (e) { return null; }
 }
+
 async function tsPut(storeName, value) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readwrite").objectStore(storeName).put(value);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  await tsOpenDB();
+  let id = _tsRowId(storeName, value);
+  if (id == null || id === "") {
+    const n = await _tsNextId(storeName);
+    value = { ...value, id: n };
+    id = String(n);
+  }
+  const json = JSON.stringify(value);
+  await _tsRun("INSERT OR REPLACE INTO `" + storeName + "` (id, json) VALUES (?,?)", [id, json]);
+  return value.id != null ? value.id : id;
 }
+
 async function tsAdd(storeName, value) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readwrite").objectStore(storeName).add(value);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  await tsOpenDB();
+  const n = await _tsNextId(storeName);
+  const row = { ...value, id: n };
+  if (storeName === "users") {
+    // users keyed by email — still assign numeric id field
+  }
+  const id = _tsRowId(storeName, row) || String(n);
+  if (storeName === "settings") {
+    // settings must have key
+  }
+  await _tsRun("INSERT OR REPLACE INTO `" + storeName + "` (id, json) VALUES (?,?)", [id, JSON.stringify(row)]);
+  return n;
 }
+
 async function tsDelete(storeName, key) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readwrite").objectStore(storeName).delete(key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
+  await tsOpenDB();
+  await _tsRun("DELETE FROM `" + storeName + "` WHERE id = ?", [_tsKey(storeName, key)]);
 }
+
 async function tsClear(storeName) {
-  const db = await tsOpenDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readwrite").objectStore(storeName).clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
+  await tsOpenDB();
+  await _tsRun("DELETE FROM `" + storeName + "`");
 }
+
 async function tsCount(storeName) {
-  const db = await tsOpenDB();
+  await tsOpenDB();
+  const rows = await _tsQuery("SELECT COUNT(*) AS c FROM `" + storeName + "`");
+  return Number(rows[0] && (rows[0].c != null ? rows[0].c : rows[0]["COUNT(*)"])) || 0;
+}
+
+/* ========== One-time IndexedDB → SQLite migration ========== */
+function _tsOpenLegacyIDB() {
   return new Promise((resolve, reject) => {
-    const req = db.transaction(storeName, "readonly").objectStore(storeName).count();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    try {
+      const req = indexedDB.open("techserenia_pos", 7);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onupgradeneeded = () => { /* don't create */ };
+    } catch (e) { reject(e); }
   });
 }
+
+async function _tsMaybeMigrateFromIndexedDB() {
+  try {
+    const flag = await tsGet("settings", "sql_migrated_from_idb");
+    if (flag && flag.value) return;
+    const countProducts = await tsCount("products");
+    const countInvoices = await tsCount("invoices");
+    if (countProducts + countInvoices > 0) {
+      await tsPut("settings", { key: "sql_migrated_from_idb", value: "1" });
+      return;
+    }
+    if (typeof indexedDB === "undefined") {
+      await tsPut("settings", { key: "sql_migrated_from_idb", value: "1" });
+      return;
+    }
+    let idb;
+    try { idb = await _tsOpenLegacyIDB(); } catch (e) {
+      await tsPut("settings", { key: "sql_migrated_from_idb", value: "1" });
+      return;
+    }
+    const readAll = (store) => new Promise((resolve) => {
+      try {
+        if (!idb.objectStoreNames.contains(store)) return resolve([]);
+        const req = idb.transaction(store, "readonly").objectStore(store).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      } catch (e) { resolve([]); }
+    });
+    let migrated = 0;
+    for (const store of TS_ALL_STORES) {
+      const rows = await readAll(store);
+      for (const row of rows) {
+        try {
+          if (store === "settings" && row && row.key != null) {
+            await tsPut("settings", row);
+          } else if (store === "users" && row && row.email) {
+            await tsPut("users", row);
+          } else if (row) {
+            await tsPut(store, row);
+          }
+          migrated++;
+        } catch (e) { console.warn("migrate row", store, e); }
+      }
+    }
+    try { idb.close(); } catch (e) {}
+    await tsPut("settings", { key: "sql_migrated_from_idb", value: "1" });
+    if (migrated) console.info("[OrbitBills] Migrated", migrated, "rows from IndexedDB → SQLite");
+  } catch (e) {
+    console.warn("IDB migration skipped", e);
+  }
+}
+
 
 async function tsHashPassword(password, saltHex) {
   const enc = new TextEncoder();

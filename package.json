@@ -1,12 +1,13 @@
 {
   "name": "orbitbills-apk",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "scripts": {
     "sync": "npx cap sync android",
     "build:apk": "cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "^7.0.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.5.0",
@@ -14,11 +15,13 @@
     "@capacitor/filesystem": "^8.0.0",
     "@capacitor/haptics": "^8.0.0",
     "@capacitor/keyboard": "^8.0.0",
+    "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/network": "^8.0.0",
     "@capacitor/share": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.0",
-    "@capacitor/local-notifications": "^8.0.0"
+    "jeep-sqlite": "^2.8.0",
+    "sql.js": "^1.12.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0"
